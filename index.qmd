@@ -29,7 +29,7 @@ dir_ls(regexp = ".qmd") |>
   mutate(
     order = 1:n(), 
     lab = str_remove(value, "_"), 
-    out = glue("1. [{value}](http://www.jvcasillas.com/{value}.html)")
+    out = glue("1. [{value}](https://www.jvcasillas.com/{value}.html)")
   ) |> 
   arrange(order) |> 
   pull(out)
