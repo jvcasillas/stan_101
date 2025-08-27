@@ -21,15 +21,14 @@ library("glue")
 #| echo: false
 #| message: false
 #| results: 'asis'
-dir_ls(regexp = ".qmd") |> 
+dir_ls(path = here("models")) |> 
   as_tibble() |> 
-  mutate(value = str_remove(value, ".qmd")) |> 
-  filter(value != "index") |> 
+  mutate(value = str_remove(value, here("models/"))) |>
   separate(value, into = c("pre", "value"), sep = 3) |> 
   mutate(
     order = 1:n(), 
     lab = str_replace(value, "_", " "), 
-    out = glue("1. [{lab}](https://www.jvcasillas.com/stan_101/{pre}{value}.html)")
+    out = glue("1. [{lab}](https://www.jvcasillas.com/stan_101/models/{pre}{value}/index.html)")
   ) |> 
   arrange(order) |> 
   pull(out)
