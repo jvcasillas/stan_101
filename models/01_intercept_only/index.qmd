@@ -6,10 +6,8 @@ format: html
 
 ```{r}
 #| label: setup
-#| message: false
-library("rstan")
-library("tidyverse")
-library("tidybayes")
+#| include: false
+source(here::here("scripts", "00_libraries.R"))
 ```
 
 The intercept-only model will take the format `y ~ 1` in standard `lme4`-style syntax. 
@@ -32,9 +30,27 @@ dat_df <- tibble(y = rnorm(1000))
 dat_df |> summarize(mean = mean(y), sd = sd(y))
 ```
 
-Now, we will write a linear model in Stan. 
-This is the default model RStudio gives you as a template. 
+In `brms` we can fit this model like this: 
+
+```{r}
+#| label: brms-mod
+mod_brms <- brm(
+  formula = y ~ 1, 
+  family = gaussian(), 
+  prior = c(
+    prior(normal(0, 1), class = Intercept), 
+    prior(normal(0, 1), class = sigma)
+  ), 
+  data = dat_df, 
+  cores = 4, 
+  file = here("mods", "mod_int")
+)
+```
+
+Now, we will write the same model in Stan. 
 **Note**: You have to use the chunk option `output.var` to access the Stan code after the fact. 
+In this case, we will assign the Stan code to the object `model`.
+
 
 ```{stan}
 #| label: write-model
@@ -46,10 +62,11 @@ functions {
 
 }
 
-// The input data is a vector 'y' of length 'n'.
 data {
-  int<lower=0> n;
-  vector[n] y;
+// ... declarations ...
+  int<lower=0> n; // number of observations
+  vector[n] y;    // criterion
+  int prior_only; // Should the likelihood be ignored?
 }
 
 transformed data {
@@ -57,28 +74,34 @@ transformed data {
 
 }
 
-// The parameters accepted by the model. Our model
-// accepts two parameters 'mu' and 'sigma'.
 parameters {
-  real mu;
+// ... declarations ...
+  real Intercept;
   real<lower=0> sigma;
 }
 
 transformed parameters {
 // ... declarations ... statements ...
-
+  real lprior = 0;
+  lprior += normal_lpdf(Intercept | 0, 1);
+  lprior += normal_lpdf(sigma | 0, 1) - normal_lccdf(0 | 0, 1); // offset scale
 }
 
-// The model to be estimated. We model the output
-// 'y' to be normally distributed with mean 'mu'
-// and standard deviation 'sigma'.
 model {
-  y ~ normal(mu, sigma);
+// ... declarations ... statements ...
+  // Likelihood
+  if (!prior_only) {
+  // Initialize linear predictor term
+  vector[n] mu = rep_vector(0.0, n);
+  mu += Intercept;
+  target += normal_lpdf(y | mu, sigma);
+  }
+  target += lprior;
 }
 
 generated quantities {
 // ... declarations ... statements ...
-  
+  real b_Intercept = Intercept;
 }
 ```
 
@@ -93,10 +116,11 @@ We have to do a few things:
 ```{r}
 #| label: fit-mod
 #| cache: true
-
+# Get list of data
 dat_ls <- dat_df |> 
-  compose_data()
+  compose_data(prior_only = as.integer(FALSE))
 
+# Fit model
 mod <- sampling(
   object = model, 
   data = dat_ls, 
@@ -109,23 +133,23 @@ Now we can do all the normal stuff to the model object.
 
 ```{r}
 #| label: play
-print(mod, pars = c("mu", "sigma"), probs = c(0.025, 0.975))
+print(mod, pars = c("b_Intercept", "sigma"), probs = c(0.025, 0.975))
 
 posterior <- as.data.frame(mod)
 
 posterior |> 
   ggplot() + 
-  aes(x = mu, y = sigma) + 
+  aes(x = b_Intercept, y = sigma) + 
   geom_point(pch = 15, alpha = 0.3) + 
   geom_point(
-    data = posterior |> summarize(mu = mean(mu), sigma = mean(sigma)), 
+    data = posterior |> summarize(b_Intercept = mean(b_Intercept), sigma = mean(sigma)), 
     pch = 21, color = "white", fill = "#cc0033", size = 5
   ) + 
   ds4ling::ds4ling_bw_theme()
 
 posterior |> 
   pivot_longer(
-    cols = c("mu", "sigma"), 
+    cols = c("b_Intercept", "sigma"), 
     names_to = "pars", 
     values_to = "estimate"
   ) |> 
