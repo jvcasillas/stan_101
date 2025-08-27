@@ -1,5 +1,6 @@
 ---
 title: "Stan 101"
+subtitle: "Intercept-only model"
 format: html
 ---
 
@@ -11,8 +12,27 @@ library("tidyverse")
 library("tidybayes")
 ```
 
+The intercept-only model will take the format `y ~ 1` in standard `lme4`-style syntax. 
+We will assume the data generating process for `y` is a normal distribution, which takes the parameters $\mu$ and $\sigma$. 
+The full model can be described in @eq-model: 
 
-First we will write a linear model in Stan. 
+$$
+\begin{aligned}
+y_{i}  & \sim Normal(\mu, \sigma) & [Likelihood]\\
+\mu    & \sim Normal(0, 1)        & [Prior] \\
+\sigma & \sim Normal_{+}(0, 1)    & [Prior] \\
+\end{aligned}
+$$ {#eq-model}
+
+First, we will simulate some data from the normal distribution with a mean of 0 and scale 1.
+
+```{r}
+#| label: data-gen
+dat_df <- tibble(y = rnorm(1000))
+dat_df |> summarize(mean = mean(y), sd = sd(y))
+```
+
+Now, we will write a linear model in Stan. 
 This is the default model RStudio gives you as a template. 
 **Note**: You have to use the chunk option `output.var` to access the Stan code after the fact. 
 
@@ -21,10 +41,20 @@ This is the default model RStudio gives you as a template.
 #| output.var: "model"
 #| cache: true
 
-// The input data is a vector 'y' of length 'N'.
+functions {
+// ... function declarations and definitions ...
+
+}
+
+// The input data is a vector 'y' of length 'n'.
 data {
-  int<lower=0> N;
-  vector[N] y;
+  int<lower=0> n;
+  vector[n] y;
+}
+
+transformed data {
+// ... declarations ... statements ...
+
 }
 
 // The parameters accepted by the model. Our model
@@ -34,39 +64,52 @@ parameters {
   real<lower=0> sigma;
 }
 
+transformed parameters {
+// ... declarations ... statements ...
+
+}
+
 // The model to be estimated. We model the output
 // 'y' to be normally distributed with mean 'mu'
 // and standard deviation 'sigma'.
 model {
   y ~ normal(mu, sigma);
 }
+
+generated quantities {
+// ... declarations ... statements ...
+  
+}
 ```
 
 Now we can fit the model. 
 We have to do a few things: 
 
-1. We use `rstan::sampling` to fit the object `model` from the previous chunk. 
-2. We pass the data in the form of a list. 
-3. We assign the output to the object `mod`. 
+1. We use `tidybayes::compose_data` to convert our data frame to a list format that plays nicely with Stan.
+2. We use `rstan::sampling` to fit the object `model` from the previous chunk. 
+3. We pass the data in the form of a list (created in (1)). 
+4. We assign the output to the object `mod`. 
 
 ```{r}
 #| label: fit-mod
 #| cache: true
+
+dat_ls <- dat_df |> 
+  compose_data()
+
 mod <- sampling(
   object = model, 
-  data = list(
-    y = rnorm(1000), 
-    N = 1000
-  ), 
+  data = dat_ls, 
   cores = 4
 )
+
 ```
 
-Now we can do all the normal stuff to the stan object. 
+Now we can do all the normal stuff to the model object. 
 
 ```{r}
 #| label: play
-print(mod, pars = c("mu", "sigma"))
+print(mod, pars = c("mu", "sigma"), probs = c(0.025, 0.975))
 
 posterior <- as.data.frame(mod)
 
