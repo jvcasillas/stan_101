@@ -25,11 +25,11 @@ dir_ls(regexp = ".qmd") |>
   as_tibble() |> 
   mutate(value = str_remove(value, ".qmd")) |> 
   filter(value != "index") |> 
-  separate(value, into = c("order", "value"), sep = 3) |> 
+  separate(value, into = c("pre", "value"), sep = 3) |> 
   mutate(
     order = 1:n(), 
-    lab = str_remove(value, "_"), 
-    out = glue("1. [{value}](https://www.jvcasillas.com/stan_101/{value}.html)")
+    lab = str_replace(value, "_", " "), 
+    out = glue("1. [{lab}](https://www.jvcasillas.com/stan_101/{pre}{value}.html)")
   ) |> 
   arrange(order) |> 
   pull(out)
