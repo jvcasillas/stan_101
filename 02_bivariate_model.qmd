@@ -1,0 +1,123 @@
+---
+title: "Stan 101"
+subtitle: "Bivariate model"
+format: html
+---
+
+```{r}
+#| label: setup
+#| message: false
+library("rstan")
+library("tidyverse")
+library("tidybayes")
+```
+
+
+First we will write a linear model in Stan. 
+This is the default model RStudio gives you as a template with some additions to include a continuous predictor. 
+**Note**: You have to use the chunk option `output.var` to access the Stan code after the fact. 
+
+```{stan}
+#| label: write-model
+#| output.var: "model"
+#| cache: true
+
+// The input data is a vector 'y' of length 'N'.
+data {
+  int<lower=0> N;
+  vector[N] y;
+  vector[N] x;
+}
+
+// The parameters accepted by the model. Our model
+// accepts four parameters 'alpha', 'mu', 'sigma', and 'beta'.
+parameters {
+  real alpha;
+  real mu;
+  real<lower=0> sigma;
+  real beta;
+}
+
+// The model to be estimated. We model the output
+// 'y' as a function of 'x'. 
+// 'y' is assumed to be normally distributed with a mean mu and sd sigma.
+model {
+  // Priors:
+  target += normal_lpdf(alpha | 0, 1);
+  target += normal_lpdf(mu | 0, 1);
+  target += lognormal_lpdf(sigma | 3, 1);
+  target += normal_lpdf(beta | 0, 1);
+  // Likelihood
+  y ~ normal(alpha + x .* beta, sigma);
+}
+```
+
+Now we can fit the model. 
+We have to do a few things: 
+
+1. We use `rstan::sampling` to fit the object `model` from the previous chunk. 
+2. We pass the data in the form of a list. 
+3. We assign the output to the object `mod`. 
+
+```{r}
+#| label: fit-mod
+#| cache: true
+
+n <- 1000
+x <- rnorm(n, mean = 0, sd = 0.5)
+alpha <- 0
+beta  <- 0.5
+sigma <- rnorm(n, 0, 0.5)
+y <- alpha + (x * beta) + sigma
+
+mean(y); sd(y)
+
+mod <- sampling(
+  object = model, 
+  data = list(
+    y = y, 
+    x = x,
+    N = n
+  ), 
+  cores = 4
+)
+```
+
+Now we can do all the normal stuff to the stan object. 
+
+```{r}
+#| label: play
+print(mod, pars = c("alpha", "mu", "sigma", "beta"))
+
+posterior <- as.data.frame(mod)
+
+posterior |> 
+  pivot_longer(
+    cols = c("alpha", "sigma", "beta"), 
+    names_to = "pars", 
+    values_to = "estimate"
+  ) |> 
+  ggplot() + 
+  aes(x = estimate, y = pars) + 
+  stat_halfeye() + 
+  ds4ling::ds4ling_bw_theme()
+
+tibble(x = x, y = y) |> 
+  ggplot() + 
+  aes(x = x, y = y) + 
+  geom_point() + 
+  geom_abline(
+    data = posterior |> sample_n(200), 
+    aes(intercept = alpha, slope = beta), 
+    alpha = 0.2, color = "grey"
+  ) + 
+  geom_abline(
+    data = posterior |> summarize(alpha = mean(alpha), beta = mean(beta)), 
+    aes(intercept = alpha, slope = beta), 
+    color = "white", linewidth = 1.2
+  ) + 
+  ds4ling::ds4ling_bw_theme()
+```
+
+
+
